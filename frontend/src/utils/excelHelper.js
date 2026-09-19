@@ -37,10 +37,23 @@ export const exportToExcel = async (transactions) => {
       // Format as a Table
       const table = sheet.tables.add(rangeAddress, true /* hasHeaders */);
       table.name = "TaxData" + new Date().getTime().toString().slice(-4);
-      table.tableStyle = "TableStyleMedium2";
+      table.tableStyle = "TableStyleMedium16"; // A sleek dark blue style
+
+      // Format the Amount column (Column C) as Currency
+      const amountRange = sheet.getRange(`C2:C${allData.length}`);
+      amountRange.numberFormat = [["₹#,##0.00"]];
+
+      // Format headers
+      const headerRange = sheet.getRange("A1:E1");
+      headerRange.format.font.bold = true;
+      headerRange.format.font.color = "white";
+      headerRange.format.fill.color = "#4F46E5"; // Indigo brand color
 
       // Auto-fit columns
       range.format.autofitColumns();
+      
+      // Freeze the top row so headers stay visible when scrolling
+      sheet.freezePanes.freezeRows(1);
       
       // Make the new sheet active
       sheet.activate();
