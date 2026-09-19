@@ -20,8 +20,10 @@ import "./config/passport.js";
 
 // Routes Import
 import authRouter from './routes/auth.routes.js';
+import transactionRouter from './routes/transaction.routes.js';
 
 // Routes Declaration
 app.use("/api/v1/auth", authRouter);
+app.use("/api/v1/transactions", transactionRouter);
 
 export { app };
