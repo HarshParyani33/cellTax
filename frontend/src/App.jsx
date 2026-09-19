@@ -135,7 +135,12 @@ function App() {
                     <tr key={index} className={txn.confidenceScore < 0.8 ? "low-confidence" : "high-confidence"}>
                       <td>{new Date(txn.date).toLocaleDateString()}</td>
                       <td>{txn.description}</td>
-                      <td>{txn.amount}</td>
+                      <td className={txn.type.toLowerCase() === 'debit' || txn.type.toLowerCase() === 'expense' ? 'amt-debit' : 'amt-credit'}>
+                        {txn.amount}
+                      </td>
+                      <td className={txn.type.toLowerCase() === 'debit' || txn.type.toLowerCase() === 'expense' ? 'type-debit' : 'type-credit'}>
+                        {txn.type}
+                      </td>
                       <td>
                         <select 
                           value={txn.proposedCategory || "Uncategorized"}

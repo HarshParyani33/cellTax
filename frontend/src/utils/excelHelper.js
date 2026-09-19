@@ -55,6 +55,35 @@ export const exportToExcel = async (transactions) => {
       // Freeze the top row so headers stay visible when scrolling
       sheet.freezePanes.freezeRows(1);
       
+      // --- 1. Apply Conditional Formatting for Debits & Credits ---
+      const typeRange = sheet.getRange(`D2:D${allData.length}`);
+      
+      // Format Debits (Red)
+      const debitFormat = typeRange.conditionalFormats.add(window.Excel.ConditionalFormatType.containsText);
+      debitFormat.textComparison.rule = { operator: window.Excel.ConditionalTextOperator.contains, text: "Debit" };
+      debitFormat.textComparison.format.font.color = "#ef4444";
+      debitFormat.textComparison.format.font.bold = true;
+      
+      // Format Credits (Green)
+      const creditFormat = typeRange.conditionalFormats.add(window.Excel.ConditionalFormatType.containsText);
+      creditFormat.textComparison.rule = { operator: window.Excel.ConditionalTextOperator.contains, text: "Credit" };
+      creditFormat.textComparison.format.font.color = "#10b981";
+      creditFormat.textComparison.format.font.bold = true;
+
+      // --- 2. Inject Native Excel Chart ---
+      // Plot the Amounts (Column C) against the Categories (Column E)
+      const chartDataRange = sheet.getRange(`C1:C${allData.length}`);
+      const chartCategoryRange = sheet.getRange(`E2:E${allData.length}`);
+      
+      const chart = sheet.charts.add(window.Excel.ChartType.pie, chartDataRange, window.Excel.ChartSeriesBy.auto);
+      chart.title.text = "Transaction Breakdown";
+      chart.setPosition("G2", "M16");
+      
+      // Set the pie slice labels to be the final categories
+      chart.axes.categoryAxis.setCategoryNames(chartCategoryRange);
+      chart.legend.position = window.Excel.ChartLegendPosition.right;
+      chart.legend.format.font.size = 9;
+
       // Make the new sheet active
       sheet.activate();
       
