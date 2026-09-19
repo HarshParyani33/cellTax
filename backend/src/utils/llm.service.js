@@ -7,7 +7,7 @@ const openai = new OpenAI({
 });
 
 // We default to the gemma model requested, but allow override via env
-const MODEL_NAME = process.env.OPENROUTER_MODEL || 'google/gemma-2-9b-it:free';
+const MODEL_NAME = process.env.OPENROUTER_MODEL || 'google/gemma-2-9b-it';
 
 /**
  * Categorize a batch of transactions using the LLM via OpenRouter.

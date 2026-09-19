@@ -39,8 +39,8 @@ function App() {
           }));
 
           // Send to backend
-          // We assume a dummy clientId for now since auth isn't fully connected in frontend
-          const clientId = "client_123"; 
+          // We use a dummy valid MongoDB ObjectId since the backend schema expects an ObjectId
+          const clientId = "507f1f77bcf86cd799439011"; 
           
           const response = await axios.post(`http://localhost:5000/api/v1/transactions/batch/${clientId}`, {
             transactions: mappedTransactions
@@ -128,10 +128,8 @@ function App() {
                         </select>
                       </td>
                       <td>{txn.confidenceScore ? (txn.confidenceScore * 100).toFixed(0) + '%' : 'N/A'}</td>
-                      <td>
-                        <span className="tooltip-trigger" title={txn.aiReasoning}>
-                          ℹ️
-                        </span>
+                      <td className="reasoning-cell">
+                        {txn.aiReasoning}
                       </td>
                     </tr>
                   ))}

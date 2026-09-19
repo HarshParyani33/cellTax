@@ -1,0 +1,11 @@
+Date,Description,Amount,Type
+2026-09-01,TechCorp Salary Sept,150000.00,Credit
+2026-09-02,Starbucks Coffee,450.00,Debit
+2026-09-03,Transfer to Rahul,5000.00,Debit
+2026-09-04,Interest received FD,2300.50,Credit
+2026-09-05,Amazon AWS Hosting,1200.00,Debit
+2026-09-06,Payment for invoice #1029,45000.00,Credit
+2026-09-07,Swiggy Food Order,850.00,Debit
+2026-09-10,Unknown NEFT Transfer,12000.00,Credit
+2026-09-12,Office Supplies Stationery,1500.00,Debit
+2026-09-15,Consulting Fee received,85000.00,Credit
