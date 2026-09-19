@@ -1,5 +1,6 @@
 import { Transaction } from '../models/transaction.model.js';
 import { CategoryRule } from '../models/categoryRule.model.js';
+import { OverrideRule } from '../models/overrideRule.model.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
 import { ApiError } from '../utils/ApiError.js';
@@ -19,11 +20,13 @@ const processBatch = asyncHandler(async (req, res) => {
 
     // Load all deterministic category rules
     const rules = await CategoryRule.find({});
+    // Load CA's past overrides for this client
+    const overrides = await OverrideRule.find({ clientId });
 
     const processedTransactions = [];
     const unclassifiedBatch = [];
 
-    // Step 1: Run deterministic rules
+    // Step 1: Run deterministic rules & overrides
     transactions.forEach(txn => {
         let proposedCategory = null;
         let confidenceScore = null;
@@ -31,12 +34,21 @@ const processBatch = asyncHandler(async (req, res) => {
         
         const descLower = (txn.description || "").toLowerCase();
         
-        for (const rule of rules) {
-            if (descLower.includes(rule.keyword.toLowerCase())) {
-                proposedCategory = rule.category;
-                confidenceScore = rule.confidence;
-                aiReasoning = `Matched rule: "${rule.keyword}" -> ${rule.category}`;
-                break;
+        // Check Overrides first (highest priority)
+        const matchedOverride = overrides.find(o => o.description.toLowerCase() === descLower);
+        if (matchedOverride) {
+            proposedCategory = matchedOverride.newCategory;
+            confidenceScore = 1.0;
+            aiReasoning = `Matched your past correction -> ${matchedOverride.newCategory}`;
+        } else {
+            // Check deterministic rules
+            for (const rule of rules) {
+                if (descLower.includes(rule.keyword.toLowerCase())) {
+                    proposedCategory = rule.category;
+                    confidenceScore = rule.confidence;
+                    aiReasoning = `Matched rule: "${rule.keyword}" -> ${rule.category}`;
+                    break;
+                }
             }
         }
 
@@ -50,12 +62,11 @@ const processBatch = asyncHandler(async (req, res) => {
             confidenceScore,
             aiReasoning,
             status: 'Pending',
-            _originalIndex: processedTransactions.length // Keep track to merge later
+            _originalIndex: processedTransactions.length
         };
 
         processedTransactions.push(processedTxn);
 
-        // If no match or low confidence, queue for LLM
         if (!proposedCategory || confidenceScore < 0.8) {
             unclassifiedBatch.push({
                 index: processedTxn._originalIndex,
@@ -66,19 +77,23 @@ const processBatch = asyncHandler(async (req, res) => {
         }
     });
 
-    // Step 2: Call LLM for unclassified transactions
+    // Step 2: Call LLM for unclassified transactions with Few-Shot context
     if (unclassifiedBatch.length > 0) {
         console.log(`Sending ${unclassifiedBatch.length} transactions to LLM...`);
-        // Map to just the fields the LLM needs to save tokens
         const llmPayload = unclassifiedBatch.map(t => ({
             description: t.description,
             amount: t.amount,
             type: t.type
         }));
 
-        const llmResults = await categorizeTransactionsBatch(llmPayload);
+        // Format overrides for the LLM to learn from
+        const pastOverridesContext = overrides.map(o => ({
+            description: o.description,
+            category: o.newCategory
+        }));
 
-        // Merge LLM results back into processedTransactions
+        const llmResults = await categorizeTransactionsBatch(llmPayload, pastOverridesContext);
+
         if (llmResults && llmResults.length === unclassifiedBatch.length) {
             unclassifiedBatch.forEach((unclassified, i) => {
                 const llmCategory = llmResults[i];
@@ -99,10 +114,7 @@ const processBatch = asyncHandler(async (req, res) => {
         }
     }
 
-    // Clean up temporary internal fields
     const finalTransactions = processedTransactions.map(({ _originalIndex, ...rest }) => rest);
-
-    // Save to database
     const inserted = await Transaction.insertMany(finalTransactions);
 
     return res.status(201).json(
@@ -110,4 +122,21 @@ const processBatch = asyncHandler(async (req, res) => {
     );
 });
 
-export { processBatch };
+const saveOverride = asyncHandler(async (req, res) => {
+    const { clientId, description, originalCategory, newCategory } = req.body;
+
+    if (!clientId || !description || !newCategory) {
+        throw new ApiError(400, "clientId, description, and newCategory are required");
+    }
+
+    // Upsert the override rule
+    const rule = await OverrideRule.findOneAndUpdate(
+        { clientId, description: description.trim() },
+        { originalCategory, newCategory },
+        { upsert: true, new: true }
+    );
+
+    return res.status(200).json(new ApiResponse(200, rule, "Override rule saved for future learning"));
+});
+
+export { processBatch, saveOverride };

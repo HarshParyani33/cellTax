@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { processBatch } from '../controllers/transaction.controller.js';
+import { processBatch, saveOverride } from '../controllers/transaction.controller.js';
 import { verifyJWT } from '../middlewares/auth.middleware.js';
 
 const router = Router();
@@ -9,5 +9,8 @@ const router = Router();
 
 // Endpoint to ingest a batch of transactions (JSON array)
 router.route("/batch/:clientId").post(processBatch);
+
+// Endpoint to save a CA's manual correction for adaptive learning
+router.route("/override").post(saveOverride);
 
 export default router;

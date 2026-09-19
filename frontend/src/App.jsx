@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import Papa from 'papaparse';
 import axios from 'axios';
+import { Analytics } from './components/Analytics';
+import { exportToExcel } from './utils/excelHelper';
 import './App.css';
 
 function App() {
@@ -28,9 +30,6 @@ function App() {
       skipEmptyLines: true,
       complete: async (results) => {
         try {
-          // Normalize headers to ensure we get date, description, amount, type
-          // Realistically, bank CSVs have different headers. For now, we assume standard ones
-          // or we map them.
           const mappedTransactions = results.data.map((row) => ({
             date: row.Date || row.date || new Date().toISOString(),
             description: row.Description || row.Narration || row.description || row.narration || "Unknown",
@@ -38,8 +37,6 @@ function App() {
             type: (row.Type || row.type || "Debit").trim(),
           }));
 
-          // Send to backend
-          // We use a dummy valid MongoDB ObjectId since the backend schema expects an ObjectId
           const clientId = "507f1f77bcf86cd799439011"; 
           
           const response = await axios.post(`http://localhost:5000/api/v1/transactions/batch/${clientId}`, {
@@ -61,6 +58,28 @@ function App() {
         setLoading(false);
       }
     });
+  };
+
+  const handleCategoryChange = async (index, newCategory) => {
+    const txn = transactions[index];
+    const originalCategory = txn.proposedCategory;
+    
+    // Update UI immediately
+    const updated = [...transactions];
+    updated[index].proposedCategory = newCategory;
+    setTransactions(updated);
+
+    // Call override API for feedback loop
+    try {
+      await axios.post('http://localhost:5000/api/v1/transactions/override', {
+        clientId: "507f1f77bcf86cd799439011",
+        description: txn.description,
+        originalCategory,
+        newCategory
+      });
+    } catch (err) {
+      console.error("Failed to save override rule", err);
+    }
   };
 
   return (
@@ -90,7 +109,15 @@ function App() {
 
         {transactions.length > 0 && (
           <section className="results-section">
-            <h2>Categorized Transactions</h2>
+            <Analytics transactions={transactions} />
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h2>Categorized Transactions</h2>
+              <button onClick={() => exportToExcel(transactions)} className="upload-btn" style={{ background: '#10B981' }}>
+                Export to Workbook
+              </button>
+            </div>
+            
             <div className="table-container">
               <table className="transactions-table">
                 <thead>
@@ -111,7 +138,8 @@ function App() {
                       <td>{txn.amount}</td>
                       <td>
                         <select 
-                          defaultValue={txn.proposedCategory || "Uncategorized"}
+                          value={txn.proposedCategory || "Uncategorized"}
+                          onChange={(e) => handleCategoryChange(index, e.target.value)}
                           className="category-select"
                         >
                           <option value="Uncategorized">Uncategorized</option>
@@ -127,7 +155,7 @@ function App() {
                           )}
                         </select>
                       </td>
-                      <td>{txn.confidenceScore ? (txn.confidenceScore * 100).toFixed(0) + '%' : 'N/A'}</td>
+                      <td>{txn.confidenceScore ? (txn.confidenceScore > 1 ? txn.confidenceScore : txn.confidenceScore * 100).toFixed(0) + '%' : 'N/A'}</td>
                       <td className="reasoning-cell">
                         {txn.aiReasoning}
                       </td>

@@ -6,20 +6,25 @@ const openai = new OpenAI({
     apiKey: process.env.OPENROUTER_API_KEY,
 });
 
-// We default to the gemma model requested, but allow override via env
-const MODEL_NAME = process.env.OPENROUTER_MODEL || 'google/gemma-2-9b-it';
+// We default to a known working free model on OpenRouter
+const MODEL_NAME = process.env.OPENROUTER_MODEL || 'meta-llama/llama-3.1-8b-instruct:free';
 
 /**
  * Categorize a batch of transactions using the LLM via OpenRouter.
  * @param {Array} transactions Array of unclassified transaction objects
+ * @param {Array} pastOverrides Array of past manual overrides from the CA
  * @returns {Promise<Array>} Array of categorized transactions (category, confidence, reasoning)
  */
-const categorizeTransactionsBatch = async (transactions) => {
+const categorizeTransactionsBatch = async (transactions, pastOverrides = []) => {
     if (!transactions || transactions.length === 0) return [];
+
+    const overrideContext = pastOverrides.length > 0 
+        ? `\nHere are some past categorization corrections made by the CA for this specific client. Learn from these examples:\n${JSON.stringify(pastOverrides, null, 2)}\n` 
+        : "";
 
     const prompt = `
 You are an expert Indian Chartered Accountant (CA) assistant. Your task is to categorize a batch of bank transactions into ITR-relevant income/expense heads. 
-
+${overrideContext}
 Here are the transactions:
 ${JSON.stringify(transactions, null, 2)}
 
