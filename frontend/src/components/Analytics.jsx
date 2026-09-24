@@ -12,8 +12,9 @@ export const Analytics = ({ transactions }) => {
     const incomeMap = {};
 
     transactions.forEach(txn => {
-      const cat = txn.proposedCategory || "Uncategorized";
-      if (txn.type.toLowerCase() === 'debit' || txn.type.toLowerCase() === 'expense') {
+      const cat = txn.itrHead || "Uncertain";
+      const dir = (txn.transactionDirection || txn.type || "Debit").toLowerCase();
+      if (dir === 'debit' || dir === 'expense') {
         expenseMap[cat] = (expenseMap[cat] || 0) + txn.amount;
       } else {
         incomeMap[cat] = (incomeMap[cat] || 0) + txn.amount;

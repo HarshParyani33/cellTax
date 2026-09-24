@@ -10,13 +10,10 @@ const overrideRuleSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-    originalCategory: {
-        type: String
-    },
-    newCategory: {
-        type: String,
-        required: true
-    }
+    originalHead: { type: String },
+    newHead: { type: String, required: true },
+    newTaxTreatment: { type: String },
+    newSection: { type: String }
 }, { timestamps: true });
 
 // Ensure we only store one active override per description per client

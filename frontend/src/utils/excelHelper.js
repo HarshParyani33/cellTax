@@ -16,21 +16,24 @@ export const exportToExcel = async (transactions) => {
       const sheet = sheets.add("ITR Draft " + new Date().getTime().toString().slice(-4));
       
       // Define the headers
-      const headers = [["Date", "Description", "Amount", "Type", "Final Category"]];
+      const headers = [["Date", "Description", "Amount", "Dir", "ITR Head", "Treatment", "Section", "Engine & Reasoning"]];
       
       // Map data to a 2D array
       const dataRows = transactions.map(txn => [
         new Date(txn.date).toLocaleDateString(),
         txn.description,
         txn.amount,
-        txn.type,
-        txn.proposedCategory || "Uncategorized"
+        txn.transactionDirection || txn.type,
+        txn.itrHead || "Uncertain - Needs Manual Review",
+        txn.taxTreatment || "Uncertain",
+        txn.relevantSection || "N/A",
+        `[${txn.engine}] ${txn.reasoning}`
       ]);
       
       const allData = headers.concat(dataRows);
       
       // Get the range based on data size
-      const rangeAddress = `A1:E${allData.length}`;
+      const rangeAddress = `A1:H${allData.length}`;
       const range = sheet.getRange(rangeAddress);
       range.values = allData;
       
@@ -44,7 +47,7 @@ export const exportToExcel = async (transactions) => {
       amountRange.numberFormat = [["₹#,##0.00"]];
 
       // Format headers
-      const headerRange = sheet.getRange("A1:E1");
+      const headerRange = sheet.getRange("A1:H1");
       headerRange.format.font.bold = true;
       headerRange.format.font.color = "white";
       headerRange.format.fill.color = "#4F46E5"; // Indigo brand color
@@ -70,14 +73,21 @@ export const exportToExcel = async (transactions) => {
       creditFormat.textComparison.format.font.color = "#10b981";
       creditFormat.textComparison.format.font.bold = true;
 
-      // --- 2. Inject Native Excel Chart ---
-      // Plot the Amounts (Column C) against the Categories (Column E)
+      // --- 2. Apply Conditional Formatting for Uncertain heads ---
+      const headRange = sheet.getRange(`E2:E${allData.length}`);
+      const uncertainFormat = headRange.conditionalFormats.add(window.Excel.ConditionalFormatType.containsText);
+      uncertainFormat.textComparison.rule = { operator: window.Excel.ConditionalTextOperator.contains, text: "Uncertain" };
+      uncertainFormat.textComparison.format.fill.color = "#fef08a"; // Yellow warning
+      uncertainFormat.textComparison.format.font.color = "#854d0e";
+
+      // --- 3. Inject Native Excel Chart ---
+      // Plot the Amounts (Column C) against the ITR Heads (Column E)
       const chartDataRange = sheet.getRange(`C1:C${allData.length}`);
       const chartCategoryRange = sheet.getRange(`E2:E${allData.length}`);
       
       const chart = sheet.charts.add(window.Excel.ChartType.pie, chartDataRange, window.Excel.ChartSeriesBy.auto);
-      chart.title.text = "Transaction Breakdown";
-      chart.setPosition("G2", "M16");
+      chart.title.text = "Transaction Breakdown by ITR Head";
+      chart.setPosition("J2", "P16");
       
       // Set the pie slice labels to be the final categories
       chart.axes.categoryAxis.setCategoryNames(chartCategoryRange);

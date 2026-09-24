@@ -1,10 +1,10 @@
 import { Transaction } from '../models/transaction.model.js';
-import { CategoryRule } from '../models/categoryRule.model.js';
 import { OverrideRule } from '../models/overrideRule.model.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
 import { ApiError } from '../utils/ApiError.js';
 import { categorizeTransactionsBatch } from '../utils/llm.service.js';
+import { applyDeterministicRules } from '../utils/rulesEngine.js';
 
 const processBatch = asyncHandler(async (req, res) => {
     const { clientId } = req.params;
@@ -18,8 +18,6 @@ const processBatch = asyncHandler(async (req, res) => {
         throw new ApiError(400, "An array of transactions is required in the body");
     }
 
-    // Load all deterministic category rules
-    const rules = await CategoryRule.find({});
     // Load CA's past overrides for this client
     const overrides = await OverrideRule.find({ clientId });
 
@@ -28,51 +26,61 @@ const processBatch = asyncHandler(async (req, res) => {
 
     // Step 1: Run deterministic rules & overrides
     transactions.forEach(txn => {
-        let proposedCategory = null;
-        let confidenceScore = null;
-        let aiReasoning = null;
+        let itrHead = null;
+        let taxTreatment = null;
+        let relevantSection = null;
+        let reasoning = null;
+        let engine = 'LLM';
         
         const descLower = (txn.description || "").toLowerCase();
         
         // Check Overrides first (highest priority)
         const matchedOverride = overrides.find(o => o.description.toLowerCase() === descLower);
         if (matchedOverride) {
-            proposedCategory = matchedOverride.newCategory;
-            confidenceScore = 1.0;
-            aiReasoning = `Matched your past correction -> ${matchedOverride.newCategory}`;
+            itrHead = matchedOverride.newHead;
+            taxTreatment = matchedOverride.newTaxTreatment;
+            relevantSection = matchedOverride.newSection;
+            reasoning = `Matched your past correction -> ${matchedOverride.newHead} (${matchedOverride.newSection || 'N/A'})`;
+            engine = 'Rules Engine';
         } else {
             // Check deterministic rules
-            for (const rule of rules) {
-                if (descLower.includes(rule.keyword.toLowerCase())) {
-                    proposedCategory = rule.category;
-                    confidenceScore = rule.confidence;
-                    aiReasoning = `Matched rule: "${rule.keyword}" -> ${rule.category}`;
-                    break;
-                }
+            const ruleResult = applyDeterministicRules(txn.description, txn.amount, txn.type);
+            if (ruleResult) {
+                itrHead = ruleResult.itrHead;
+                taxTreatment = ruleResult.taxTreatment;
+                relevantSection = ruleResult.relevantSection;
+                reasoning = ruleResult.reasoning;
+                engine = 'Rules Engine';
             }
         }
+
+        const rawType = (txn.type || "Debit").trim();
+        const normalizedType = rawType.charAt(0).toUpperCase() + rawType.slice(1).toLowerCase();
 
         const processedTxn = {
             clientId,
             date: txn.date ? new Date(txn.date) : new Date(), 
             description: txn.description || "Unknown",
             amount: Number(txn.amount) || 0,
-            type: txn.type || "Debit",
-            proposedCategory,
-            confidenceScore,
-            aiReasoning,
+            transactionDirection: normalizedType,
+            type: normalizedType, // Legacy type preservation if needed by frontend
+            itrHead,
+            taxTreatment,
+            relevantSection,
+            reasoning,
+            engine,
             status: 'Pending',
             _originalIndex: processedTransactions.length
         };
 
         processedTransactions.push(processedTxn);
 
-        if (!proposedCategory || confidenceScore < 0.8) {
+        if (!itrHead || itrHead === "Uncertain - Needs Manual Review" && engine === 'LLM') {
             unclassifiedBatch.push({
                 index: processedTxn._originalIndex,
                 description: processedTxn.description,
                 amount: processedTxn.amount,
-                type: processedTxn.type
+                type: processedTxn.transactionDirection
             });
         }
     });
@@ -89,27 +97,35 @@ const processBatch = asyncHandler(async (req, res) => {
         // Format overrides for the LLM to learn from
         const pastOverridesContext = overrides.map(o => ({
             description: o.description,
-            category: o.newCategory
+            itrHead: o.newHead,
+            taxTreatment: o.newTaxTreatment,
+            relevantSection: o.newSection
         }));
 
-        const llmResults = await categorizeTransactionsBatch(llmPayload, pastOverridesContext);
+        try {
+            const llmResults = await categorizeTransactionsBatch(llmPayload, pastOverridesContext);
 
-        if (llmResults && llmResults.length === unclassifiedBatch.length) {
-            unclassifiedBatch.forEach((unclassified, i) => {
-                const llmCategory = llmResults[i];
-                const targetTxn = processedTransactions[unclassified.index];
-                
-                targetTxn.proposedCategory = llmCategory.category || "Uncategorized";
-                targetTxn.confidenceScore = llmCategory.confidence || 0.5;
-                targetTxn.aiReasoning = `LLM: ${llmCategory.reasoning || 'No reasoning provided'}`;
-            });
-        } else {
-            console.warn("LLM results count mismatch or failure. Using fallback.");
+            if (llmResults && llmResults.length === unclassifiedBatch.length) {
+                unclassifiedBatch.forEach((unclassified, i) => {
+                    const llmCategory = llmResults[i];
+                    const targetTxn = processedTransactions[unclassified.index];
+                    
+                    targetTxn.itrHead = llmCategory.itrHead || "Uncertain - Needs Manual Review";
+                    targetTxn.taxTreatment = llmCategory.taxTreatment || "Uncertain";
+                    targetTxn.relevantSection = llmCategory.relevantSection || "N/A";
+                    targetTxn.reasoning = llmCategory.reasoning || 'No reasoning provided';
+                    targetTxn.engine = 'LLM';
+                });
+            }
+        } catch (error) {
+            console.error("LLM batch failed, marking as uncertain", error);
             unclassifiedBatch.forEach((unclassified) => {
                 const targetTxn = processedTransactions[unclassified.index];
-                targetTxn.proposedCategory = targetTxn.proposedCategory || "Uncategorized";
-                targetTxn.confidenceScore = targetTxn.confidenceScore || 0;
-                targetTxn.aiReasoning = targetTxn.aiReasoning || "LLM processing failed.";
+                targetTxn.itrHead = "Uncertain - Needs Manual Review";
+                targetTxn.taxTreatment = "Uncertain";
+                targetTxn.relevantSection = "N/A";
+                targetTxn.reasoning = "LLM API Failed. Manual review required.";
+                targetTxn.engine = 'LLM';
             });
         }
     }
@@ -123,16 +139,16 @@ const processBatch = asyncHandler(async (req, res) => {
 });
 
 const saveOverride = asyncHandler(async (req, res) => {
-    const { clientId, description, originalCategory, newCategory } = req.body;
+    const { clientId, description, newHead, newTaxTreatment, newSection } = req.body;
 
-    if (!clientId || !description || !newCategory) {
-        throw new ApiError(400, "clientId, description, and newCategory are required");
+    if (!clientId || !description || !newHead) {
+        throw new ApiError(400, "clientId, description, and newHead are required");
     }
 
     // Upsert the override rule
     const rule = await OverrideRule.findOneAndUpdate(
         { clientId, description: description.trim() },
-        { originalCategory, newCategory },
+        { newHead, newTaxTreatment, newSection },
         { upsert: true, new: true }
     );
 

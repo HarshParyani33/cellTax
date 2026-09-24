@@ -23,19 +23,31 @@ const transactionSchema = new Schema({
         enum: ['Credit', 'Debit'],
         required: true,
     },
-    proposedCategory: {
+    transactionDirection: {
+        type: String,
+        enum: ['Credit', 'Debit'],
+        required: true,
+    },
+    itrHead: {
         type: String,
         default: null,
     },
-    confidenceScore: {
-        type: Number,
-        min: 0,
-        max: 100,
-        default: null,
-    },
-    aiReasoning: {
+    taxTreatment: {
         type: String,
         default: null,
+    },
+    relevantSection: {
+        type: String,
+        default: null,
+    },
+    reasoning: {
+        type: String,
+        default: null,
+    },
+    engine: {
+        type: String,
+        enum: ['Rules Engine', 'LLM'],
+        default: 'LLM',
     },
     status: {
         type: String,
