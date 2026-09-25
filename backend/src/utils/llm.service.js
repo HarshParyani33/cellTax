@@ -89,13 +89,13 @@ Respond STRICTLY with a valid JSON array of objects. Do not include markdown cod
                 console.log(`Retrying chunk ${i / CHUNK_SIZE + 1} (Attempt ${attempt + 1})...`);
             }
             try {
-                const maxTokens = 2000;
+                const maxTokens = 3000;
                 const completion = await openai.chat.completions.create({
                     model: MODEL_NAME,
                     temperature: 0,
                     max_tokens: maxTokens,
                     messages: [
-                        { role: "system", content: "You are a precise assistant that outputs ONLY raw JSON arrays. No prose, no markdown formatting." },
+                        { role: "system", content: "You are a precise assistant that outputs ONLY raw JSON arrays. No prose, no markdown formatting. Keep the reasoning field under 15 words per transaction." },
                         { role: "user", content: prompt }
                     ]
                 });

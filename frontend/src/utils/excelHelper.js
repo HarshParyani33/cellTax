@@ -12,8 +12,19 @@ export const exportToExcel = async (transactions) => {
   try {
     await window.Excel.run(async (context) => {
       const sheets = context.workbook.worksheets;
+      
+      // Check if "ITR Draft" already exists and delete it if it does
+      let sheet = sheets.getItemOrNullObject("ITR Draft");
+      await context.sync();
+      
+      if (!sheet.isNullObject) {
+        sheet.delete();
+        await context.sync();
+      }
+      
       // Create a new sheet for the exported data
-      const sheet = sheets.add("ITR Draft " + new Date().getTime().toString().slice(-4));
+      sheet = sheets.add("ITR Draft");
+      await context.sync();
       
       // Define the headers
       const headers = [["Date", "Description", "Amount", "Dir", "ITR Head", "Treatment", "Section", "Engine & Reasoning"]];
@@ -101,6 +112,6 @@ export const exportToExcel = async (transactions) => {
     });
   } catch (error) {
     console.error("Error writing to Excel:", error);
-    alert("Failed to write to Excel: " + error.message);
+    throw new Error("Failed to write to Excel: " + error.message);
   }
 };
